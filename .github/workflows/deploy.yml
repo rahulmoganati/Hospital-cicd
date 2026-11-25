@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+
   workflow_dispatch:
 
 jobs:
@@ -12,37 +13,47 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Download source code
+      # 1. Checkout application code
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2. Login to Docker Hub
+      # 2. Validate Docker credentials
+      - name: Validate Docker Secrets
+        env:
+          DOCKER_USER: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASS: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          test -n "$DOCKER_USER" || (echo "Docker username missing" && exit 1)
+          test -n "$DOCKER_PASS" || (echo "Docker password missing" && exit 1)
+          echo "Docker credentials are available"
+
+      # 3. Login to Docker Hub
       - name: Docker Hub Login
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # 3. Build Docker image
+      # 4. Build Docker image
       - name: Build Docker Image
         run: |
           docker build \
-            -t ${{ secrets.DOCKER_USERNAME }}/medix-hospital:${{ github.sha }} .
+            -t rahul7989/medix-hospital:${{ github.sha }} .
 
-      # 4. Push image to Docker Hub
+      # 5. Push image to Docker Hub
       - name: Push Docker Image
         run: |
-          docker push ${{ secrets.DOCKER_USERNAME }}/medix-hospital:${{ github.sha }}
+          docker push rahul7989/medix-hospital:${{ github.sha }}
 
-      # 5. Deploy to Kubernetes on EC2
+      # 6. Deploy to Kubernetes on EC2
       - name: Deploy to Kubernetes
         uses: appleboy/ssh-action@v1.2.0
         env:
-          IMAGE: ${{ secrets.DOCKER_USERNAME }}/medix-hospital:${{ github.sha }}
+          IMAGE: rahul7989/medix-hospital:${{ github.sha }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
+          key: ${{ secrets.SSH_KEY }}
           envs: IMAGE
           script: |
             sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf \
