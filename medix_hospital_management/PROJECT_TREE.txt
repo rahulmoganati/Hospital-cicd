@@ -1,0 +1,57 @@
+medix_hospital_management/
+├── app/
+├── database/
+│   ├── nginx/
+│   ├── systemd/
+├── models/
+├── routes/
+├── services/
+│   ├── css/
+│   ├── js/
+├── templates/
+│   ├── admin/
+│   ├── auth/
+│   ├── doctor/
+│   ├── errors/
+│   ├── patient/
+├── utils/
+├── .env.example
+├── .gitignore
+├── README.md
+│   ├── __init__.py
+│   ├── __main__.py
+├── config.py
+│   ├── schema.sql
+│   │   ├── medix.conf
+│   │   ├── medix.service
+├── extensions.py
+├── manage.py
+│   ├── __init__.py
+│   ├── appointment.py
+│   ├── department.py
+│   ├── doctor.py
+│   ├── patient.py
+│   ├── user.py
+├── requirements.txt
+│   ├── admin.py
+│   ├── auth.py
+│   ├── doctor.py
+│   ├── main.py
+│   ├── patient.py
+│   ├── appointment_service.py
+│   │   ├── style.css
+│   │   ├── main.js
+│   │   ├── appointments.html
+│   │   ├── dashboard.html
+│   │   ├── departments.html
+│   │   ├── doctors.html
+│   │   ├── patients.html
+│   │   ├── login.html
+│   ├── base.html
+│   │   ├── dashboard.html
+│   │   ├── 403.html
+│   │   ├── 404.html
+│   │   ├── 500.html
+│   │   ├── dashboard.html
+│   ├── decorators.py
+│   ├── validators.py

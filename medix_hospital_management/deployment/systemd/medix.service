@@ -1,0 +1,12 @@
+[Unit]
+Description=Medix Hospital Flask application
+After=network.target
+[Service]
+User=medix
+Group=www-data
+WorkingDirectory=/opt/medix
+EnvironmentFile=/opt/medix/.env
+ExecStart=/opt/medix/venv/bin/gunicorn --workers 2 --bind 127.0.0.1:8000 'app:create_app()'
+Restart=always
+[Install]
+WantedBy=multi-user.target

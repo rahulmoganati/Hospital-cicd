@@ -1,0 +1,1 @@
+{% extends "base.html" %}{% block content %}<h1>Patients</h1><div class="card">{% for p in items %}<p>{{ p.user.full_name }} · {{ p.user.email }}</p>{% else %}<p>No patients.</p>{% endfor %}</div>{% endblock %}
