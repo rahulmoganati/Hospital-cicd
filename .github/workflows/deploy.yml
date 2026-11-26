@@ -28,7 +28,7 @@ jobs:
       # 2. Check repository structure
       - name: Check Repository Files
         run: |
-          echo "Current directory:"
+          echo "Current working directory:"
           pwd
 
           echo "Repository files:"
@@ -57,7 +57,7 @@ jobs:
       - name: Validate Build Context
         run: |
           if [ ! -f "./medix_hospital_management/requirements.txt" ]; then
-            echo "ERROR: requirements.txt not found in build context"
+            echo "ERROR: requirements.txt missing"
             exit 1
           fi
 
@@ -81,7 +81,7 @@ jobs:
 
           echo "Docker credentials available"
 
-      # 6. Login to Docker Hub
+      # 6. Docker Hub Login
       - name: Docker Hub Login
         uses: docker/login-action@v3
         with:
@@ -102,34 +102,52 @@ jobs:
         run: |
           docker push rahul7989/medix-hospital:${{ github.sha }}
 
-      # 9. Validate EC2 configuration
-      - name: Validate EC2 Secrets
+      # 9. Validate EC2 secrets and hostname
+      - name: Validate EC2 Host
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
           SSH_KEY: ${{ secrets.SSH_KEY }}
         run: |
           test -n "$EC2_HOST" || {
-            echo "EC2_HOST is missing"
+            echo "ERROR: EC2_HOST is missing"
             exit 1
           }
 
           test -n "$EC2_USER" || {
-            echo "EC2_USER is missing"
+            echo "ERROR: EC2_USER is missing"
             exit 1
           }
 
           test -n "$SSH_KEY" || {
-            echo "SSH_KEY is missing"
+            echo "ERROR: SSH_KEY is missing"
             exit 1
           }
 
-          if [[ "$EC2_HOST" == http://* || "$EC2_HOST" == https://* ]]; then
-            echo "ERROR: EC2_HOST must contain only the public IP or hostname"
-            exit 1
-          fi
+          python3 - <<'PY'
+          import os
+          import ipaddress
+          import socket
 
-          echo "EC2 connection secrets are configured"
+          host = os.environ["EC2_HOST"]
+
+          if host != host.strip():
+              raise SystemExit("ERROR: EC2_HOST contains spaces")
+
+          try:
+              ipaddress.ip_address(host)
+              print("EC2_HOST is a valid IP address")
+          except ValueError:
+              try:
+                  socket.getaddrinfo(host, 22)
+                  print("EC2 hostname resolved successfully")
+              except socket.gaierror as error:
+                  raise SystemExit(
+                      f"EC2 hostname DNS resolution failed: {error}"
+                  )
+          PY
+
+          echo "EC2 configuration validated"
 
       # 10. Deploy to Kubernetes on EC2
       - name: Deploy to Kubernetes
@@ -145,23 +163,27 @@ jobs:
           command_timeout: 5m
           envs: IMAGE
           script: |
-            echo "Connected to EC2 successfully"
+            echo "SSH connection successful"
 
-            echo "Checking Kubernetes cluster"
+            echo "Checking Kubernetes nodes"
+
             sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf \
               get nodes
 
-            echo "Updating Medix Hospital image"
+            echo "Updating Medix Hospital deployment"
+
             sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf \
               set image deployment/medix-hospital \
               medix-hospital=$IMAGE
 
-            echo "Checking deployment rollout"
+            echo "Waiting for Kubernetes rollout"
+
             sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf \
               rollout status deployment/medix-hospital \
               --timeout=180s
 
             echo "Checking application pods"
+
             sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf \
               get pods -o wide
 
