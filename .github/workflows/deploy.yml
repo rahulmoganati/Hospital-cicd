@@ -1,27 +1,43 @@
 
-name: Medix Hospital CI/CD
+name: Medix Hospital CI/CD Pipeline
 
 on:
   push:
     branches:
       - main
+
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: medix-hospital-deployment
+  cancel-in-progress: false
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout code
+
+      # 1. Checkout source code
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2. Check repository files
-      - name: Check Repository
+      # 2. Check repository structure
+      - name: Check Repository Files
         run: |
+          echo "Current directory:"
           pwd
+
+          echo "Repository files:"
           ls -la
+
+          echo "Dockerfile location:"
           find . -iname '*dockerfile*'
+
+          echo "Requirements file location:"
           find . -name requirements.txt
 
       # 3. Read Dockerfile
@@ -29,42 +45,93 @@ jobs:
         run: |
           DOCKERFILE_PATH="./medix_hospital_management/templates/Dockerfile"
 
-          test -f "$DOCKERFILE_PATH" || exit 1
+          if [ ! -f "$DOCKERFILE_PATH" ]; then
+            echo "ERROR: Dockerfile not found"
+            exit 1
+          fi
 
-          echo "Dockerfile found"
+          echo "Dockerfile found successfully"
           cat "$DOCKERFILE_PATH"
 
-      # 4. Validate Docker credentials
+      # 4. Validate Docker build context
+      - name: Validate Build Context
+        run: |
+          if [ ! -f "./medix_hospital_management/requirements.txt" ]; then
+            echo "ERROR: requirements.txt not found in build context"
+            exit 1
+          fi
+
+          echo "Build context validated"
+
+      # 5. Validate Docker credentials
       - name: Validate Docker Secrets
         env:
           DOCKER_USER: ${{ secrets.DOCKER_USERNAME }}
           DOCKER_PASS: ${{ secrets.DOCKER_PASSWORD }}
         run: |
-          test -n "$DOCKER_USER" || exit 1
-          test -n "$DOCKER_PASS" || exit 1
+          test -n "$DOCKER_USER" || {
+            echo "Docker username missing"
+            exit 1
+          }
+
+          test -n "$DOCKER_PASS" || {
+            echo "Docker password missing"
+            exit 1
+          }
+
           echo "Docker credentials available"
 
-      # 5. Docker Hub Login
+      # 6. Login to Docker Hub
       - name: Docker Hub Login
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # 6. Build Docker image
+      # 7. Build Docker image
       - name: Build Docker Image
         run: |
           docker build \
+            --pull \
             -f ./medix_hospital_management/templates/Dockerfile \
             -t rahul7989/medix-hospital:${{ github.sha }} \
             ./medix_hospital_management
 
-      # 7. Push Docker image
+      # 8. Push Docker image
       - name: Push Docker Image
         run: |
           docker push rahul7989/medix-hospital:${{ github.sha }}
 
-      # 8. Deploy to Kubernetes
+      # 9. Validate EC2 configuration
+      - name: Validate EC2 Secrets
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+        run: |
+          test -n "$EC2_HOST" || {
+            echo "EC2_HOST is missing"
+            exit 1
+          }
+
+          test -n "$EC2_USER" || {
+            echo "EC2_USER is missing"
+            exit 1
+          }
+
+          test -n "$SSH_KEY" || {
+            echo "SSH_KEY is missing"
+            exit 1
+          }
+
+          if [[ "$EC2_HOST" == http://* || "$EC2_HOST" == https://* ]]; then
+            echo "ERROR: EC2_HOST must contain only the public IP or hostname"
+            exit 1
+          fi
+
+          echo "EC2 connection secrets are configured"
+
+      # 10. Deploy to Kubernetes on EC2
       - name: Deploy to Kubernetes
         uses: appleboy/ssh-action@v1.2.0
         env:
@@ -73,12 +140,29 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.SSH_KEY }}
+          port: 22
+          timeout: 30s
+          command_timeout: 5m
           envs: IMAGE
           script: |
+            echo "Connected to EC2 successfully"
+
+            echo "Checking Kubernetes cluster"
+            sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf \
+              get nodes
+
+            echo "Updating Medix Hospital image"
             sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf \
               set image deployment/medix-hospital \
               medix-hospital=$IMAGE
 
+            echo "Checking deployment rollout"
             sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf \
               rollout status deployment/medix-hospital \
               --timeout=180s
+
+            echo "Checking application pods"
+            sudo kubectl --kubeconfig=/etc/kubernetes/admin.conf \
+              get pods -o wide
+
+            echo "Medix Hospital deployment completed"
